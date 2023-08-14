@@ -1,11 +1,13 @@
 #include "Client.h"
 
-#include <sstream>
 #include <iostream>
 #include <cstring>
 #include <assert.h>
 #include <chrono>
 #include <condition_variable>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "romocc/utilities/ZMQUtils.h"
 
@@ -46,7 +48,7 @@ bool Client::requestConnect(std::string host, int port)
     uint8_t id [256];
     size_t  id_size = 256;
     ret = zmq_getsockopt(mStreamer, ZMQ_IDENTITY, &id, &id_size);
-    assert(ret==0);
+    assert(ret == 0);
 
     mConnected = requestReply();
 
@@ -54,6 +56,16 @@ bool Client::requestConnect(std::string host, int port)
         mStopThread = false;
         mThread = std::make_unique<std::thread>(std::bind(&Client::start, this));
     }
+
+    struct sockaddr_in serv_addr;
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(30002);
+    inet_pton(AF_INET, mConnectionInfo.host.c_str(), &(serv_addr.sin_addr));
+
+    mOutStreamer = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (connect(mOutStreamer, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+        std::cout << "Could not connect" << std::endl;
     return mConnected;
 }
 
@@ -68,11 +80,14 @@ bool Client::requestDisconnect()
 
 bool Client::sendPackage(std::string package)
 {
-    uint8_t id [256];
-    size_t id_size = 256;
-    zmq_getsockopt(mStreamer, ZMQ_IDENTITY, &id, &id_size);
-    zmq_send(mStreamer, id, id_size, ZMQ_SNDMORE);
-    zmq_send(mStreamer, package.c_str(), strlen(package.c_str()), 0);
+//    uint8_t id [256];
+//    size_t id_size = 256;
+//    zmq_getsockopt(mStreamer, ZMQ_IDENTITY, &id, &id_size);
+//    zmq_send(mStreamer, id, id_size, ZMQ_SNDMORE);
+//    zmq_send(mStreamer, package.c_str(), strlen(package.c_str()), 0);
+    ssize_t sent = send(mOutStreamer, package.c_str(), strlen(package.c_str()), 0);
+    if(sent <= 0)
+        return false;
     return true;
 }
 

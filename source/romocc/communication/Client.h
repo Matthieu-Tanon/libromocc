@@ -42,6 +42,7 @@ class ROMOCC_EXPORT Client : public Object
         bool mConnected = false;
 
         void* mStreamer;
+        int mOutStreamer;
         void start();
         bool requestReply();
 };

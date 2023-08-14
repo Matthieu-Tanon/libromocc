@@ -1,5 +1,12 @@
 from .pyromocc import *
 from typing import Union
+import socket
+
+try:
+    import urx
+    import math3d as m3d
+except ModuleNotFoundError:
+    pass
 
 
 class Robot(RobotBase):
@@ -24,7 +31,7 @@ class Robot(RobotBase):
         A list of 6 values representing the axis-angle representation and translation of the end-effector wrt base
     """
 
-    def __init__(self, ip: str, port: int = 30003, manipulator: str = None, units="mm", **kwargs):
+    def __init__(self, ip: str, port: int = 30003, manipulator: str = None, units="mm", extra_backend=None, **kwargs):
         RobotBase.__init__(self)
         self.ip = ip
         self.port = port
@@ -39,8 +46,27 @@ class Robot(RobotBase):
             raise ValueError("Manipulator of type {} not supported.".format(manipulator))
 
         self.configure(self.manipulator, self.ip, self.port)
+        self.extra_backend = extra_backend
 
-    def move_to_pose(self, pose, acceleration, velocity):
+    def connect(self):
+        connected = super().connect()
+        if self.extra_backend:
+            self._s_secondary = socket.create_connection((self.ip, 30002), timeout=0.5)
+            # self.urx_robot = urx.Robot(host=self.ip)
+        return connected
+
+    def movep(self, *args, **kwargs):
+        if self.extra_backend:
+            pose = m3d.Transform(args[0])
+            pose.pos /= 1000
+            tpose = [round(i, 4) for i in pose.pose_vector]
+            program = f"movej(p{tpose},a={args[1]/1000},v={args[2]/1000},r={0})\n"
+            program = program.encode()
+            ret_val = self._s_secondary.send(program)
+        else:
+            super().movep(*args, **kwargs)
+
+    def move_to_pose(self, pose, acceleration=None, velocity=None, duration=None):
         """
         Parameters
         ----------
@@ -163,6 +189,10 @@ class Robot(RobotBase):
 
     def inverse_jacobian(self):
         return self.get_state().get_inverse_jacobian()
+
+    def move_to_operational(self):
+        pi = 3.14159265
+        self.movej([-pi/2, -pi/2, pi/2, -pi/2, -pi/2, pi], 50, 50)
 
     def send_program(self, program: Union[str, bytes]):
         """
